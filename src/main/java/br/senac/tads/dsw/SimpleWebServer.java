@@ -12,7 +12,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Exemplo obtido em https://www.baeldung.com/java-serversocket-simple-http-server
+ * Exemplo obtido em
+ * https://www.baeldung.com/java-serversocket-simple-http-server
  * Alterado com apoio do Github Copilot para tratamento do request body
  *
  * @author fernando.tsuda
@@ -28,12 +29,12 @@ public class SimpleWebServer {
 
 	public void start() throws IOException {
 
-//		// PARA JAVA 21+ - usa virtual threads
-//		ExecutorService threadPool = Executors.newVirtualThreadPerTaskExecutor();
+		// // PARA JAVA 21+ - usa virtual threads
+		// ExecutorService threadPool = Executors.newVirtualThreadPerTaskExecutor();
 
 		ExecutorService threadPool = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
 		try (ServerSocket serverSocket = new ServerSocket(port)) {
-			System.out.println("Server started na porta " +  port);
+			System.out.println("Server started na porta " + port);
 			while (true) {
 				Socket clientSocket = serverSocket.accept();
 				threadPool.execute(() -> handleClient(clientSocket));
@@ -78,27 +79,40 @@ public class SimpleWebServer {
 
 			// RECONSTROI A REQUEST MESSAGE (PARA DEBUG/DIDATICO)
 			String requestMessage = requestLine + "\r\n" + header + "\r\n" + body;
-			System.out.println(requestMessage);
+
+			// RESOLVENDO EXERCICIO
+			HtmlResponse htmlResponse = new HtmlResponse();
+			JsonResponse jsonResponse = new JsonResponse();
+
+			String url = requestLine.split(" ")[1];
+			if (url.equals("/?nome=Fulano&email=fulano@email.com")) {
+				String[] parametros = url.split("&");
+				String nome = parametros[0].split("=")[1];
+				String email = parametros[1].split("=")[1];
+				System.out.println(htmlResponse.gerarResposta(nome, email));
+				System.out.println(jsonResponse.gerarResposta(nome, email));
+				System.out.println(requestMessage);
+			}
 
 			// PROCESSAMENTO - GERAR CORPO DA RESPONSE
 			String bodyOutTemplate = """
-				<!doctype html>
-				<html>
-					<head>
-						<meta charset="UTF-8">
-						<title>TADS DSW</title>
+					<!doctype html>
+					<html>
+						<head>
+							<meta charset="UTF-8">
+							<title>TADS DSW</title>
 
-					</head>
-					<body>
-						<h1>Exemplo Servidor Web Java</h1>
-						<p>Teste alteração</p>
-						<hr>
-						<h2>Mensagem Request</h2>
-						<pre>{0}</pre>
-						<hr>
-					</body>
-				</html>
-				""";
+						</head>
+						<body>
+							<h1>Exemplo Servidor Web Java</h1>
+							<p>Teste alteração</p>
+							<hr>
+							<h2>Mensagem Request</h2>
+							<pre>{0}</pre>
+							<hr>
+						</body>
+					</html>
+					""";
 			String responseBody = MessageFormat.format(bodyOutTemplate.replace("'", "''"), requestMessage).trim();
 
 			DateTimeFormatter formatter = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss Z", Locale.ENGLISH);
