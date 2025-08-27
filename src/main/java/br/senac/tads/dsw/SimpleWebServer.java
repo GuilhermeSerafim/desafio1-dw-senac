@@ -83,15 +83,31 @@ public class SimpleWebServer {
 			// RESOLVENDO EXERCICIO
 			HtmlResponse htmlResponse = new HtmlResponse();
 			JsonResponse jsonResponse = new JsonResponse();
+			String response = "";
 
 			String url = requestLine.split(" ")[1];
+			String accept = "text/html"; // fallback padrão
 			if (url.equals("/?nome=Fulano&email=fulano@email.com")) {
 				String[] parametros = url.split("&");
 				String nome = parametros[0].split("=")[1];
 				String email = parametros[1].split("=")[1];
-				System.out.println(htmlResponse.gerarResposta(nome, email));
-				System.out.println(jsonResponse.gerarResposta(nome, email));
 				System.out.println(requestMessage);
+
+				for (String line : header.split("\r\n")) {
+					if (line.toLowerCase().startsWith("accept:")) {
+						accept = line.substring("accept:".length()).trim();
+						accept = accept.split(",")[0].split(";")[0].trim();
+						break;
+					}
+				}
+
+				if (accept.equals("text/html")) {
+					response = htmlResponse.gerarResposta(nome, email);
+					System.out.println(response);
+				} else {
+					response = jsonResponse.gerarResposta(nome, email);
+					System.out.println(response);
+				}
 			}
 
 			// PROCESSAMENTO - GERAR CORPO DA RESPONSE
@@ -109,11 +125,17 @@ public class SimpleWebServer {
 							<hr>
 							<h2>Mensagem Request</h2>
 							<pre>{0}</pre>
+							<h2>Mensagem no formato escolhido {1}</h2>
+							<pre>{2}</pre>
 							<hr>
 						</body>
 					</html>
 					""";
-			String responseBody = MessageFormat.format(bodyOutTemplate.replace("'", "''"), requestMessage).trim();
+			String responseBody = MessageFormat.format(
+					bodyOutTemplate.replace("'", "''"),
+					requestMessage,
+					accept.equals("text/html") ? "HTML" : "JSON",
+					response).trim();
 
 			DateTimeFormatter formatter = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss Z", Locale.ENGLISH);
 			ZonedDateTime now = ZonedDateTime.now(ZoneOffset.UTC);
@@ -124,7 +146,7 @@ public class SimpleWebServer {
 			out.write("HTTP/1.1 200 OK\r\n");
 			out.write("Date: " + formatter.format(now) + "\r\n");
 			out.write("Server: Custom Server\r\n");
-			out.write("Content-Type: text/html\r\n");
+			out.write("Content-Type: " + accept + "\r\n");
 			out.write("Content-Length: " + length + "\r\n");
 			out.write("\r\n");
 
