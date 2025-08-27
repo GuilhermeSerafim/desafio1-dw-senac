@@ -81,11 +81,13 @@ public class SimpleWebServer {
 			String requestMessage = requestLine + "\r\n" + header + "\r\n" + body;
 
 			// RESOLVENDO EXERCICIO
+			
 			HtmlResponse htmlResponse = new HtmlResponse();
 			JsonResponse jsonResponse = new JsonResponse();
 			String response = "";
-
-			String url = requestLine.split(" ")[1];
+			
+			String url = requestLine != null ? requestLine.split(" ")[1] : "";
+			if(url.equals("")) return;
 			String accept = "text/html"; // fallback padrão
 			if (url.equals("/?nome=Fulano&email=fulano@email.com")) {
 				String[] parametros = url.split("&");
@@ -146,7 +148,7 @@ public class SimpleWebServer {
 			out.write("HTTP/1.1 200 OK\r\n");
 			out.write("Date: " + formatter.format(now) + "\r\n");
 			out.write("Server: Custom Server\r\n");
-			out.write("Content-Type: " + accept + "\r\n");
+			out.write("Content-Type: " + accept + "; charset=UTF-8" + "\r\n");
 			out.write("Content-Length: " + length + "\r\n");
 			out.write("\r\n");
 
