@@ -1,5 +1,7 @@
 package br.senac.tads.dsw;
 
+// Guilherme da Silva Serafim, STADSCAS3NA
+
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -56,11 +58,7 @@ public class SimpleWebServer {
 		try (BufferedReader in = new BufferedReader(
 				new InputStreamReader(clientSocket.getInputStream(), StandardCharsets.UTF_8));
 				BufferedWriter out = new BufferedWriter(
-						new OutputStreamWriter(clientSocket.getOutputStream(), StandardCharsets.UTF_8))) { // força
-																											// UTF-8
-																											// para
-																											// bater com
-																											// o header
+						new OutputStreamWriter(clientSocket.getOutputStream(), StandardCharsets.UTF_8))) {
 
 			String requestLine = "";
 			StringBuilder requestHeaders = new StringBuilder();
@@ -173,9 +171,6 @@ public class SimpleWebServer {
 			out.write("\r\n");
 			out.flush(); // garante headers no socket
 
-			// Corpo: como estamos usando Writer UTF-8 consistente com Content-Length
-			// calculado em bytes,
-			// podemos escrever direto os caracteres (mantendo coerência de encoding).
 			out.write(responseBody);
 			out.flush();
 
@@ -192,7 +187,35 @@ public class SimpleWebServer {
 		}
 	}
 
-	// Helper
+	/**
+	 * Faz o parsing da query string a partir de um caminho de URL e retorna um mapa
+	 * de parâmetros.
+	 * <p>
+	 * Exemplo:
+	 * 
+	 * <pre>
+	 * parseQuery("/path?nome=Fulano&email=fulano%40mail.com")
+	 * // -> {"nome":"Fulano", "email":"fulano@mail.com"}
+	 * </pre>
+	 *
+	 * Regras de parsing:
+	 * <ul>
+	 * <li>Se não houver '?', ou se ele for o último caractere, retorna um mapa
+	 * vazio.</li>
+	 * <li>Os pares são separados por '&'.</li>
+	 * <li>Cada par pode estar no formato "chave=valor" ou apenas "chave" (neste
+	 * caso, valor = "").</li>
+	 * <li>Chave e valor são decodificados com {@code URLDecoder} usando UTF-8
+	 * (percent-encoding).</li>
+	 * <li>Se a mesma chave aparecer mais de uma vez, o último valor sobrescreve os
+	 * anteriores.</li>
+	 * </ul>
+	 *
+	 * @param urlPath caminho da URL possivelmente contendo uma query string (ex.:
+	 *                {@code "/?a=1&b=2"})
+	 * @return mapa imutável com os parâmetros decodificados (chave -> valor); vazio
+	 *         se não houver query
+	 */
 	private static Map<String, String> parseQuery(String urlPath) {
 		Map<String, String> map = new HashMap<>();
 		int q = urlPath.indexOf('?');
