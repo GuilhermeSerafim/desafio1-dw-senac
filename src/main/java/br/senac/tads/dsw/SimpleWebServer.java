@@ -3,11 +3,15 @@ package br.senac.tads.dsw;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -27,6 +31,12 @@ public class SimpleWebServer {
 		this.port = port;
 	}
 
+	public static void main(String[] args) throws IOException {
+		int port = 8080;
+		SimpleWebServer server = new SimpleWebServer(port);
+		server.start();
+	}
+
 	public void start() throws IOException {
 
 		// // PARA JAVA 21+ - usa virtual threads
@@ -43,14 +53,19 @@ public class SimpleWebServer {
 	}
 
 	private void handleClient(Socket clientSocket) {
-		try (BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-				BufferedWriter out = new BufferedWriter(new OutputStreamWriter(clientSocket.getOutputStream()))) {
+		try (BufferedReader in = new BufferedReader(
+				new InputStreamReader(clientSocket.getInputStream(), StandardCharsets.UTF_8));
+				BufferedWriter out = new BufferedWriter(
+						new OutputStreamWriter(clientSocket.getOutputStream(), StandardCharsets.UTF_8))) { // força
+																											// UTF-8
+																											// para
+																											// bater com
+																											// o header
 
 			String requestLine = "";
 			StringBuilder requestHeaders = new StringBuilder();
 			boolean collectinRequestLine = true;
 
-			// OBTENDO CABECALHOS DA REQUEST MESSAGE DO HTTP
 			int contentLength = 0;
 			String requestInputLine;
 			while ((requestInputLine = in.readLine()) != null) {
@@ -59,17 +74,15 @@ public class SimpleWebServer {
 					collectinRequestLine = false;
 					continue;
 				}
-				if (requestInputLine.isEmpty()) {
+				if (requestInputLine.isEmpty())
 					break;
-				}
 				requestHeaders.append(requestInputLine).append("\r\n");
 				if (requestInputLine.toLowerCase().startsWith("content-length:")) {
-					contentLength = Integer.parseInt(requestInputLine.split(":")[1].trim());
+					contentLength = Integer.parseInt(requestInputLine.split(":", 2)[1].trim());
 				}
 			}
 			String header = requestHeaders.toString();
 
-			// OBTENDO CORPO DA REQUEST MESSAGE, BASEADO NO TAMANHO (CONTENT-LENGTH)
 			String body = "";
 			if (contentLength > 0) {
 				char[] bodyChars = new char[contentLength];
@@ -77,83 +90,95 @@ public class SimpleWebServer {
 				body = new String(bodyChars);
 			}
 
-			// RECONSTROI A REQUEST MESSAGE (PARA DEBUG/DIDATICO)
 			String requestMessage = requestLine + "\r\n" + header + "\r\n" + body;
 
-			// RESOLVENDO EXERCICIO
-			
 			HtmlResponse htmlResponse = new HtmlResponse();
 			JsonResponse jsonResponse = new JsonResponse();
-			String response = "";
-			
+
+			// --- URL + query params (usa seu helper parseQuery) ---
 			String url = requestLine != null ? requestLine.split(" ")[1] : "";
-			if(url.equals("")) return;
-			String accept = "text/html"; // fallback padrão
-			if (url.equals("/?nome=Fulano&email=fulano@email.com")) {
-				String[] parametros = url.split("&");
-				String nome = parametros[0].split("=")[1];
-				String email = parametros[1].split("=")[1];
-				System.out.println(requestMessage);
+			if (url.isEmpty())
+				return;
+			Map<String, String> qp = parseQuery(url);
+			String nome = qp.getOrDefault("nome", "");
+			String email = qp.getOrDefault("email", "");
 
-				for (String line : header.split("\r\n")) {
-					if (line.toLowerCase().startsWith("accept:")) {
-						accept = line.substring("accept:".length()).trim();
-						accept = accept.split(",")[0].split(";")[0].trim();
-						break;
-					}
-				}
-
-				if (accept.equals("text/html")) {
-					response = htmlResponse.gerarResposta(nome, email);
-					System.out.println(response);
-				} else {
-					response = jsonResponse.gerarResposta(nome, email);
-					System.out.println(response);
+			// --- Accept básico (pega só o 1º tipo) ---
+			String accept = "text/html";
+			for (String line : header.split("\r\n")) {
+				if (line.toLowerCase(Locale.ROOT).startsWith("accept:")) {
+					String v = line.substring(7).trim().toLowerCase(Locale.ROOT);
+					accept = v.split(",")[0].split(";")[0].trim();
+					break;
 				}
 			}
 
-			// PROCESSAMENTO - GERAR CORPO DA RESPONSE
-			String bodyOutTemplate = """
-					<!doctype html>
-					<html>
-						<head>
-							<meta charset="UTF-8">
-							<title>TADS DSW</title>
+			// --- Gera payload de acordo com Accept (NUNCA use MessageFormat no JSON) ---
+			String responsePayload;
+			boolean wantsJson = "application/json".equalsIgnoreCase(accept);
+			if (wantsJson) {
+				responsePayload = jsonResponse.gerarResposta(nome, email); // DEVE ser JSON puro
+			} else {
+				responsePayload = htmlResponse.gerarResposta(nome, email); // string “humana”
+			}
 
-						</head>
-						<body>
-							<h1>Exemplo Servidor Web Java</h1>
-							<p>Teste alteração</p>
-							<hr>
-							<h2>Mensagem Request</h2>
-							<pre>{0}</pre>
-							<h2>Mensagem no formato escolhido {1}</h2>
-							<pre>{2}</pre>
-							<hr>
-						</body>
-					</html>
-					""";
-			String responseBody = MessageFormat.format(
-					bodyOutTemplate.replace("'", "''"),
-					requestMessage,
-					accept.equals("text/html") ? "HTML" : "JSON",
-					response).trim();
+			// --- Monta body final ---
+			String responseBody;
+			if (wantsJson) {
+				// JSON puro na resposta, sem HTML
+				responseBody = responsePayload.trim();
+			} else {
+				// Página HTML com request e o “formato escolhido”
+				String bodyOutTemplate = """
+						<!doctype html>
+						<html>
+						  <head>
+						    <meta charset="UTF-8">
+						    <title>TADS DSW</title>
+						  </head>
+						  <body>
+						    <h1>Exemplo Servidor Web Java</h1>
+						    <p>Teste alteração</p>
+						    <hr>
+						    <h2>Mensagem Request</h2>
+						    <pre>{0}</pre>
+						    <h2>Mensagem no formato escolhido {1}</h2>
+						    <pre>{2}</pre>
+						    <hr>
+						  </body>
+						</html>
+						""";
+				// ATENÇÃO: usar MessageFormat SÓ no template HTML.
+				// Coloque o payload no <pre> já “como texto”, então não renderize tags.
+				String formato = "HTML"; // rótulo exibido
+				String safeRequest = requestMessage.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+						.replace("\"", "&quot;").replace("'", "&#39;");
+				String safePayload = responsePayload.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+						.replace("\"", "&quot;").replace("'", "&#39;");
+				responseBody = MessageFormat.format(bodyOutTemplate, safeRequest, formato, safePayload).trim();
+			}
+
+			// --- Headers + comprimento em BYTES (UTF-8) ---
+			byte[] bodyBytes = responseBody.getBytes(StandardCharsets.UTF_8);
 
 			DateTimeFormatter formatter = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss Z", Locale.ENGLISH);
 			ZonedDateTime now = ZonedDateTime.now(ZoneOffset.UTC);
 
-			int length = responseBody.length();
-
-			// GERA RESPONSE LINE + CABECALHOS DA RESPONSE
 			out.write("HTTP/1.1 200 OK\r\n");
 			out.write("Date: " + formatter.format(now) + "\r\n");
 			out.write("Server: Custom Server\r\n");
-			out.write("Content-Type: " + accept + "; charset=UTF-8" + "\r\n");
-			out.write("Content-Length: " + length + "\r\n");
+			out.write("Content-Type: " + (wantsJson ? "application/json" : "text/html") + "; charset=UTF-8\r\n");
+			out.write("Content-Length: " + bodyBytes.length + "\r\n");
+			out.write("Connection: close\r\n");
 			out.write("\r\n");
+			out.flush(); // garante headers no socket
 
-			// ADICIONA CORPO NA RESPONSE
+			// Corpo: como estamos usando Writer UTF-8 consistente com Content-Length
+			// calculado em bytes,
+			// podemos escrever direto os caracteres (mantendo coerência de encoding).
 			out.write(responseBody);
+			out.flush();
+
 		} catch (IOException ex) {
 			System.err.println("Error handling client " + ex.getMessage());
 		} finally {
@@ -167,9 +192,31 @@ public class SimpleWebServer {
 		}
 	}
 
-	public static void main(String[] args) throws IOException {
-		int port = 8080;
-		SimpleWebServer server = new SimpleWebServer(port);
-		server.start();
+	// Helper
+	private static Map<String, String> parseQuery(String urlPath) {
+		Map<String, String> map = new HashMap<>();
+		int q = urlPath.indexOf('?');
+		if (q < 0 || q == urlPath.length() - 1)
+			return map;
+
+		String qs = urlPath.substring(q + 1);
+		for (String pair : qs.split("&")) {
+			if (pair.isEmpty())
+				continue;
+			int eq = pair.indexOf('=');
+			String key, val;
+			if (eq >= 0) {
+				key = pair.substring(0, eq);
+				val = pair.substring(eq + 1);
+			} else {
+				key = pair; // sem '=', valor vazio
+				val = "";
+			}
+			key = URLDecoder.decode(key, StandardCharsets.UTF_8);
+			val = URLDecoder.decode(val, StandardCharsets.UTF_8);
+			map.put(key, val);
+		}
+		return map;
 	}
+
 }
